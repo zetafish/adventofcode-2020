@@ -1,7 +1,8 @@
 (ns aoc.d4
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.spec.alpha :as s]))
+            [clojure.spec.alpha :as s]
+            [clojure.set :as set]))
 
 (def example ["ecl:gry pid:860033327 eyr:2020 hcl:#fffffd"
               "byr:1937 iyr:2017 cid:147 hgt:183cm"
@@ -19,14 +20,23 @@
 
 (def input (str/split-lines (slurp (io/resource "d4.txt"))))
 
-(s/def ::byr string?) ; birth year
-(s/def ::iyr string?) ; issue year
-(s/def ::eyr string?) ; expiration year
-(s/def ::hgt string?) ; height
-(s/def ::hcl string?) ; hair color
-(s/def ::ecl string?) ; eye color
-(s/def ::pid string?) ; passport id
-(s/def ::cid string?) ; country id
+(defn number-field?
+  ([s min max] (number-field? s "" min max))
+  ([s suffix min max]
+   (let [pat (re-pattern (str "(\\d+)" suffix))]
+     (when-let [x (last (re-matches pat s))]
+       (<= min (Integer/parseInt x) max)))))
+
+
+(s/def ::byr #(number-field? % 1920 2002))
+(s/def ::iyr #(number-field? % 2010 2020))
+(s/def ::eyr #(number-field? % 2020 2030))
+(s/def ::hgt (s/or :cm #(number-field? % "cm" 150 193)
+                   :in #(number-field? % "in" 59 76)))
+(s/def ::hcl #(re-matches #"#[0-9a-f]{6}" %))
+(s/def ::ecl #{"amb" "blu" "brn" "gry" "grn" "hzl" "oth"})
+(s/def ::pid #(re-matches #"[0-9]{9}" %))
+(s/def ::cid string?)
 (s/def ::passport (s/keys :req-un [::byr ::iyr ::eyr ::hgt ::hcl ::ecl ::pid]
                           :opt-in [::cid]))
 
@@ -44,7 +54,18 @@
        (map #(str/split % #" "))
        (map (fn [kvs] (into {} (map parse-field kvs))))))
 
-(->> input
-     parse-batch
-     (filter #(s/valid? ::passport %))
-     count)
+(defn valid-1?
+  [m]
+  (every? (set (keys m)) [:byr :iyr :eyr :hgt :hcl :ecl :pid]))
+
+(defn valid-2?
+  [m]
+  (s/valid? ::passport m))
+
+;; part 1
+(->> example parse-batch (filter valid-1?) count)
+(->> input parse-batch (filter valid-1?) count)
+
+;; part 2
+(->> example parse-batch (filter valid-2?) count)
+(->> input parse-batch (filter valid-2?) count)
