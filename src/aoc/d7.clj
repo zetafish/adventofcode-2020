@@ -65,12 +65,6 @@
 (count (traverse-outers (:edges (build-graph input)) "shiny gold"))
 
 (defn count-inside
-  [edges factor from]
-  (let [found (filter #(= from (first %) edges))]
-    (if-not (seq found)
-      )))
-
-(defn count-inside
   [edges from]
   (loop [insides [] todo [[1 from]]]
     (if-not (seq todo)
