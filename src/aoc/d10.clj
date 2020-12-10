@@ -40,7 +40,7 @@
         (recur (into seen candidates)
                (into (rest todo) candidates))))))
 
-(defn find-clusters
+(defn find-sub-chains
   [coll]
   (->> coll
        (map-indexed (fn [i x] [(and (< 0 i (dec (count coll))) (can-remove-at? i coll)) x]))
@@ -64,6 +64,6 @@
        :result))
 
 ;; part 2
-(->> example1 build-chain find-clusters (map count-ways) (reduce *))
-(->> example2 build-chain find-clusters (map count-ways) (reduce *))
-(->> input  build-chain find-clusters (map count-ways) (reduce *))
+(->> example1 build-chain find-sub-chains (map count-ways) (reduce *))
+(->> example2 build-chain find-sub-chains (map count-ways) (reduce *))
+(->> input  build-chain find-sub-chains (map count-ways) (reduce *))
