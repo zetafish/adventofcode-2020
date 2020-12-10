@@ -30,3 +30,22 @@
 ;; part 1
 (find-bad-number example 5)
 (find-bad-number input 25)
+
+(defn find-block
+  [coll target]
+  (loop [a (z/next (z/vector-zip (vec coll)))
+         b (z/next (z/vector-zip (vec coll)))
+         sum 0]
+    (cond
+      (< sum target) (recur a (z/next b) (+' sum (z/node b)))
+      (> sum target) (recur (z/next a) (z/next a) 0)
+      :else (drop (count (z/lefts a)) (z/lefts b)))))
+
+(defn weakness
+  [coll]
+  (+ (reduce min coll)
+     (reduce max coll)))
+
+;; part 2
+(weakness (find-block example 127))
+(weakness (find-block input 1721308972))
