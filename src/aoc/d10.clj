@@ -45,9 +45,7 @@
   (->> coll
        (map-indexed (fn [i x] [(and (< 0 i (dec (count coll))) (can-remove-at? i coll)) x]))
        (reduce (fn [{:keys [result segment inside prev] :as acc} [can-remove? current]]
-                 (let [acc (assoc acc
-                                  :inside can-remove?
-                                  :prev current)]
+                 (let [acc (assoc acc :inside can-remove? :prev current)]
                    (cond
                      ;; we are still inside a segment
                      (and inside can-remove?) (update acc :segment conj current)
