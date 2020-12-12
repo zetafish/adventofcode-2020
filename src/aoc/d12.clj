@@ -32,11 +32,8 @@
 
 (defn waypoint-nav [{:keys [waypoint ship] :as state} [action value]]
   (let [rotate (fn [op]
-                 (->
-                  waypoint
-                  ->polar
-                  (update :theta op (Math/toRadians value))
-                  ->cartesian))]
+                 (->cartesian
+                  (update (->polar waypoint) :theta op (Math/toRadians value))))]
     (case action
       :N (update-in state [:waypoint 1] + value)
       :S (update-in state [:waypoint 1] - value)
