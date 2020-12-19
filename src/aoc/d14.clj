@@ -25,6 +25,7 @@
         v (Integer/parseInt v)]
     {:op :mem
      :slot k
+     :value v
      :bits (int->bits v)}))
 
 (defn parse [s]
@@ -56,7 +57,6 @@
   [state {:keys [slot bits]}]
   (assoc-in state [:slots slot] (apply-mask (:mask state) bits)))
 
-
 (-> {}
     (step {:op :mask :mask "XXXXXXXXXXXXXXXXXXXXXXXXXXXXX1XXXX0X"})
     (step {:op :mem :slot 8 :bits (int->bits 11)})
@@ -66,3 +66,46 @@
 
 (->> example-1 (reduce step) :slots vals (map bits->int) (reduce +))
 (->> input (reduce step) :slots vals (map bits->int) (reduce +))
+
+(defn mask-slot-bits
+  [mask bits]
+  (str/join
+   (map #(case %1
+           \0 %2
+           \1 \1
+           \X \X) mask bits)))
+
+(defn resolve-slots
+  [bits]
+  (loop [bits bits prefixes [[]]]
+    (if (empty? bits)
+      (map str/join prefixes)
+      (let [prefixes (case (first bits)
+                       \X (mapcat #(vector (conj % 0) (conj % 1)) prefixes)
+                       (map #(conj % (first bits)) prefixes))]
+        (recur (rest bits) prefixes)))))
+
+(defn step-v2
+  [state cmd]
+  (case (:op cmd)
+    :mask (assoc state :mask (:mask cmd))
+    :mem (->> (int->bits (:slot cmd))
+              (mask-slot-bits (:mask state))
+              (resolve-slots)
+              (map bits->int)
+              (reduce (fn [state slot]
+                        (assoc-in state [:slots slot] (:value cmd)))
+                      state))))
+
+(defn collect-values
+  [state]
+  (reduce + (vals (:slots state))))
+
+(-> {}
+    (step-v2 (parse "mask = 000000000000000000000000000000X1001X"))
+    (step-v2 (parse "mem[42] = 100"))
+    (step-v2 (parse "mask = 00000000000000000000000000000000X0XX"))
+    (step-v2 (parse "mem[26] = 1"))
+    collect-values)
+
+(println (collect-values (reduce step-v2 {} input)))
