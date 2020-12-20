@@ -6,7 +6,8 @@
   (-> state
       (assoc :last n)
       (update :turn (fnil inc 0))
-      (update-in [:history n] (fnil conj nil) (:turn state))))
+      (update-in [:history n] (fnil conj nil) (:turn state))
+      (update :seq (fnil conj []) n)))
 
 
 (defn what-to-say
@@ -40,4 +41,9 @@
 (->> (init input)
      (iterate say-what-must-be-said)
      (drop-while #(not= 2020 (:turn %)))
+     first :last)
+
+(->> (init input)
+     (iterate say-what-must-be-said)
+     (drop (- 30000000 (count input)))
      first :last)
