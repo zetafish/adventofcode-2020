@@ -3,23 +3,6 @@
             [clojure.java.io :as io]
             [instaparse.core :as insta]))
 
-;; (def rule "
-;;   <E>=num <': '> (a|b|and|or)
-;;   num=#'\\d+'
-;;   a=#'\"a\"'
-;;   b=#'\"b\"'
-;;   and=num (<' '> num)*
-;;   or=and <' | '> and")
-
-;; (defn parse-rule [s]
-;;   (vec
-;;    (insta/transform
-;;     {:num #(Integer/parseInt %)
-;;      :a (constantly \a)
-;;      :b (constantly \b)}
-;;     (insta/parse
-;;      (insta/parser rule) s))))
-
 (defn build-grammar [rules]
   (->> rules
        (map #(str/replace % #":" "="))
@@ -27,8 +10,7 @@
 
 (defn build-data [lines]
   (let [[rules _ messages] (partition-by str/blank? lines)]
-    {:grammar (build-grammar rules)
-     :parser (insta/parser (build-grammar rules))
+    {:rules rules
      :messages messages}))
 
 (def input (let [lines (str/split-lines (slurp (io/resource "d19.txt")))]
@@ -50,10 +32,16 @@
     (build-data lines)))
 
 (defn count-valid-messages
-  [{:keys [parser messages]}]
-  (->> messages
-       (filter #(seq (insta/parses parser % :start :0)))
-       count))
+  [{:keys [rules messages]}]
+  (let [parser (insta/parser (build-grammar rules))]
+    (->> messages
+         (filter #(seq (insta/parses parser % :start :0)))
+         count)))
 
 (count-valid-messages example)
 (count-valid-messages input)
+
+(def extra ["8: 42 | 42 8"
+            "11: 42 31 | 42 11 31"])
+
+(count-valid-messages (update input :rules concat extra))
