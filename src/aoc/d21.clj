@@ -94,7 +94,6 @@
 
 (defn blacklist [alergen-map]
   (loop [result {} alergen-map alergen-map]
-    (println "loop" result alergen-map)
     (if (empty? alergen-map)
       (update-vals result first)
       (let [items (filter (fn [[_ v]] (= 1 (count v))) alergen-map)
@@ -119,3 +118,16 @@
 ;; part 1
 (analyze-foods example)
 (analyze-foods input)
+
+(defn canonical-blacklist
+  [foods]
+  (->> foods
+       build-alergen-map
+       blacklist
+       (sort-by first)
+       (map (comp name second))
+       (str/join ",")))
+
+;; part 2
+(println (canonical-blacklist example))
+(println (canonical-blacklist input))
