@@ -1,9 +1,8 @@
 (ns aoc.d21
   (:require [clojure.java.io :as io]
+            [clojure.set :as set]
             [clojure.string :as str]
-            [clojure.math.combinatorics :as combo]
-            [instaparse.core :as insta]
-            [clojure.set :as set]))
+            [instaparse.core :as insta]))
 
 (def grammar
   "
@@ -32,52 +31,6 @@
 (defn update-vals
   [m f & args]
   (into {} (map (fn [[k v]] [k (apply f v args)]) m)))
-
-(defn disj-from-vals
-  [m coll]
-  (update-vals m #(apply disj % coll)))
-
-(disj-from-vals {:a #{1 2 3 4}
-                 :b #{1 2 3 5 6 7}}
-                [1 2])
-
-;; (defn alergy-options
-;;   [{:keys [ingredients alergens]}]
-;;   (let [n (count alergens)]
-;;     (map zipmap
-;;          (repeat alergens)
-;;          (mapcat combo/permutations (combo/combinations (list ingredients) n)))))
-
-;; (defn conflict?
-;;   [m1 m2]
-;;   (let [ks (set/intersection (set (keys m1)) (set (keys m2)))]
-;;     (not= (select-keys m1 ks)
-;;           (select-keys m2 ks))))
-
-;; (defn options-conflict?
-;;   "Check if `m` conflict with all possible options"
-;;   [options m]
-;;   (every? #(conflict? % m) options))
-
-;; (defn options-list-conflict?
-;;   [options-list m]
-;;   (some #(options-conflict? % m) options-list))
-
-;; (defn analyze [foods]
-;;   (let [state (atom [])]
-;;     (letfn [(f [blacklist options-list]
-;;               (if (empty? options-list)
-;;                 (swap! state conj blacklist)
-;;                 (let [mm (->> (first options-list)
-;;                               (remove #(conflict? blacklist %))
-;;                               (remove #(options-list-conflict? (rest options-list) %)))]
-;;                   (doseq [m mm]
-;;                     (println "trying" m "on" blacklist)
-;;                     (f (merge blacklist m) (rest options-list))))))]
-;;       (f {} (map alergy-options foods))
-;;       @state)))
-
-
 
 (defn potential-alergic-ingredients
   [foods alergen]
