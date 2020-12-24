@@ -1,6 +1,7 @@
 (ns aoc.d24
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.set :as set]))
 
 ;; https://www.redblobgames.com/grids/hexagons/
 
@@ -46,17 +47,41 @@
     (even? y) (mapv + point (d-even d))
     (odd? y)  (mapv + point (d-odd d))))
 
-(defn follow-directions [from route]
-  (reduce step
-          from
-          route))
-
-(defn black-tiles [routes]
-  (->> routes
-       (map #(reduce step [0 0] %))
-       (frequencies)
+(defn follow-plan [routes]
+  (->> (map #(reduce step [0 0] %) routes)
+       frequencies
        (filter (comp odd? second))
-       count))
+       (map first)
+       set))
 
-(black-tiles example)
-(black-tiles input)
+(defn neighbors [[_ y :as point]]
+  (map #(mapv + point %)
+       (vals (if (even? y) d-even d-odd))))
+
+(defn next-gen [black-tiles]
+  (let [all-tiles (set (concat black-tiles (mapcat neighbors black-tiles)))
+        white-tiles (set/difference all-tiles black-tiles)]
+    (->> all-tiles
+         (filter (fn [p]
+                  (let [n (->> (neighbors p)
+                               (filter black-tiles)
+                               count)]
+                    (or (and (black-tiles p) (#{1 2} n))
+                        (and (white-tiles p) (#{2} n))))))
+         set)))
+
+(defn generate [black-tiles days]
+  (->> black-tiles
+       (iterate next-gen)
+       (drop 1)
+       (take days)
+       last))
+
+
+;; part 1
+(count (follow-plan example))
+(count (follow-plan input))
+
+;; part 2
+(-> example follow-plan (generate 100) count)
+(-> input follow-plan (generate 100) count)
