@@ -1,6 +1,5 @@
 (ns aoc.d23
-  (:require [clojure.string :as str]
-            [clojure.spec.alpha :as s]))
+  (:require [clojure.string :as str]))
 
 
 (defn make-state
@@ -115,5 +114,5 @@
 
 
 ;; part 1
-(play-game (make-state example) 100)
+(announce (play-game (make-state example) 100))
 (announce (play-game (make-state input) 100))
