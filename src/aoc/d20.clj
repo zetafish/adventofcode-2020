@@ -3,9 +3,9 @@
             [clojure.string :as str]
             [clojure.set :as set]))
 
-(def N 10)
-
-(def empty-grid (vec (repeat N (vec (repeat N 0)))))
+(def monster (mapv vec ["                  # "
+                        "#    ##    ##    ###"
+                        " #  #  #  #  #  #   "]))
 
 (defn parse-tile
   [[header & grid]]
@@ -31,8 +31,6 @@
                :north :south
                :south :north})
 
-(def coords (for [x (range N) y (range N)] [x y]))
-
 (defn grid->str [g]
   (str/join "\n" (map str/join g)))
 
@@ -45,16 +43,25 @@
 (defn transform
   [fp g]
   {:pre [(every? #(every? some? %) g)]}
-  (reduce (fn [result p]
-            (let [v (get-pixel g p)]
-              (set-pixel result (fp p) v)))
-          empty-grid
-          coords))
+  (let [n (count g)]
+    (reduce (fn [result p]
+              (let [v (get-pixel g p)]
+                (set-pixel result (fp p) v)))
+            (vec (repeat n (vec (repeat n nil))))
+            (for [x (range n) y (range n)] [x y]))))
 
-(def flip-main-diagonal (partial transform (fn [[x y]] [y x])))
-(def flip-other-diagonal (partial transform (fn [[x y]] [(- N y 1) (- N x 1)])))
-(def flip-vertical-axis (partial transform (fn [[x y]] [(- N x 1) y])))
-(def flip-horizontal-axis (partial transform (fn [[x y]] [x (- N y 1)])))
+(defn flip-vertical-axis [g]
+  (mapv (comp vec reverse) g))
+
+(defn flip-horizontal-axis [g]
+  (vec (reverse g)))
+
+(defn flip-main-diagonal [g]
+  (transform (fn [[x y]] [y x]) g))
+
+(defn flip-other-diagonal [g]
+  (let [n (count g)]
+    (transform (fn [[x y]] [(- n y 1) (- n x 1)]) g)))
 
 (defn orientations
   "Square has 8 symmetries.
@@ -72,231 +79,247 @@
                   (comp flip-horizontal-axis flip-main-diagonal)
                   (comp flip-horizontal-axis flip-other-diagonal)])))
 
+(defn get-neighbors [{:keys [size plan]} point]
+  (keep (fn [d]
+          (let [p (map + d point)]
+            (when (every? #(<= 0 % (dec size)) p)
+              (get-in plan [:grid p]))))
+        [[0 -1] [0 1] [1 0][-1 0]]))
+
+;;(get-neighbors wx [0 0])
+
+(defn match-neightbors [world ])
+
+(defn plan-tile [{:keys [graph tiles plan size] :as world} point]
+  (let [neighbors (keep (fn [d]
+                      (let [p (map + d point)]
+                        (if (every? #(<= 0 % (dec size)) p)
+                          (get-in plan [:grid p])
+                          :border)))
+                    [[0 -1] [0 1] [1 0][-1 0]])
+        match-neighbors? (fn [id]
+                           (let [sides (->>
+                                        (concat (graph id) (repeat 4 :border))
+                                        (take 4)
+                                        (filter (set neighbors)))]
+                             (= (frequencies neighbors)
+                                (frequencies sides))))
+        candidates (->> (keys tiles)
+                        (filter match-neighbors?)
+                        (remove (set (:used plan))))
+        id (first candidates)]
+    (-> world
+        (assoc-in [:plan :grid point] id)
+        (update-in [:plan :used] conj id))))
+
+(defn show-plan [{:keys [plan size]}]
+  (doseq [y (range size)]
+    (doseq [x (range size)]
+      (print (format "%6s" (get-in plan [:grid [x y]]))))
+    (println)))
+
+(defn plan-all-tiles [{:keys [size] :as world}]
+  (reduce plan-tile world
+          (for [x (range size) y (range size)] [x y])))
+
+
 (defn side [direction grid]
-  (case direction
-    :north (first grid)
-    :south (last grid)
-    :west (map first grid)
-    :east (map last grid)))
+  (seq (case direction
+         :north (first grid)
+         :south (last grid)
+         :west (map first grid)
+         :east (map last grid))))
 
 (defn all-sides [grid]
   (let [sides (map #(side % grid) directions)]
-    (set (concat sides (map reverse sides)))))
+    (concat sides (map reverse sides))))
 
-(defn build-world [m size]
-  (let [sides (zipmap (map first m)
-                      (map all-sides (map second m)))
-        combos (for [a (keys m) b (keys m)
+(defn build-world [m]
+  (let [combos (for [a (keys m) b (keys m)
                      :when (and (not= a b)
-                                (seq (set/intersection (sides a)
-                                                       (sides b))))]
+                                (seq (set/intersection
+                                      (set (all-sides (m a)))
+                                      (set (all-sides (m b))))))]
                  [a b])
         graph (reduce (fn [acc [a b]]
                         (update acc a conj b))
                       {}
-                      combos)]
+                      combos)
+        size (int (Math/sqrt (count m)))]
     {:tiles m
      :graph graph
+     :size size
+     :histo (frequencies (mapcat all-sides (vals m)))
      :floor {:size size :layout {} :where {}}}))
 
 (defn corner-tiles [{:keys [graph]}]
   (map first (filter #(= 2 (count (second %))) graph)))
 
-(defn spec-one-side [{{:keys [layout size]} :floor} [x y] direction]
-  (when-let [r (case direction
-                 :north (if (zero? y)
-                          :border
-                          (side :south (get layout [x (dec y)])))
-                 :south (if (= (dec size) y)
-                          :border
-                          (side :north (get layout [x (inc y)])))
-                 :west (if (zero? x)
-                         :border
-                         (side :east (get layout [(dec x) y])))
-                 :east (if (= (dec size) x)
-                         :border
-                         (side :west (get layout [(inc x) y]))))]
-    [direction r]))
+(defn spec-one-side [{:keys [layout size]} [x y] direction]
+  (let [r (case direction
+            :north (if (zero? y)
+                     :border
+                     (side :south (get layout [x (dec y)])))
+            :south (if (= (dec size) y)
+                     :border
+                     (side :north (get layout [x (inc y)])))
+            :west (if (zero? x)
+                    :border
+                    (side :east (get layout [(dec x) y])))
+            :east (if (= (dec size) x)
+                    :border
+                    (side :west (get layout [(inc x) y]))))]
+    (when r
+      [direction r])))
 
 (defn spec-all-around [world point]
-  (keep #(spec-one-side world point %) directions))
+  (into {} (keep #(spec-one-side world point %) directions)))
 
-(defn fit-as-is? [from direction to]
-  (= (side direction from)
-     (side (opposite direction) to)))
+(defn resolve-sides [{:keys [histo]} grid]
+  (let [sides (map #(side % grid) directions)]
+    (zipmap directions (map (fn [v]
+                              (if (= 1 (histo v))
+                                :border
+                                v))
+                            sides))))
 
-(defn border? [from direction others]
-  (->> others
-       (mapcat orientations)
-       (filter #(fit-as-is? from direction %))
-       empty?))
-
-(defn border-directions
-  [{:keys [tiles graph]} id tile]
-  (let [others (map tiles (graph id))]
-    (filter #(border? tile % others) directions)))
-
-(defn satisfies-spec?
-  [world spec id tile]
-  (reduce (fn [acc [dir pattern]]
-            (cond
-              (not acc) false
-
-              (= :border pattern)
-              (contains? (set (border-directions world id tile)) dir)
-
-              (nil? pattern)
-              true
-
-              :else
-              (= pattern (side dir tile))))
-          true
-          spec))
+(defn satisfies-spec? [world spec grid]
+  (let [sides (resolve-sides world grid)]
+    (every? #(or (nil? (spec %))
+                 (= (spec %) (sides %)))
+            directions)))
 
 (defn orientate-to-spec [world spec id]
-  (let [tiles (filter #(satisfies-spec? world spec id %)
+  (let [tiles (filter #(satisfies-spec? world spec %)
                       (orientations (get-in world [:tiles id])))]
-    (when (> (count tiles) 1)
-      (println "found" (count tiles) "orientations for" id))
+    (println "found" (count tiles) "orientations for" id)
     (first tiles)))
 
-(defn find-candidates [{:keys [graph floor]} point]
-  (if (= point [0 0])
-    (map first (filter #(= 2 (count (second %))) graph))
-    (->> [[0 1] [1 0] [0 -1] [-1 0]]
-         (keep (comp graph
-                     (:ids floor)
-                     vec
-                     #(map + point %)))
-         (map set)
-         (reduce set/intersection)
-         vec)))
-
-(defn put-next-tile [world point]
-  ;;#dbg ^{:break/when (= [0 9] point)}
+(defn orientate-tile [world point]
+  (println "orientate" point)
   (let [spec (spec-all-around world point)
-        candidates (->> (find-candidates world point)
-                       (map #(vector % (orientate-to-spec world spec %)))
-                       (filter second)
-                       doall)
-        [id tile] (first candidates)]
-    (println point "=>" (map first candidates))
+        id (get-in world [:plan :grid point])
+        tile (orientate-to-spec world spec id)]
     (-> world
-        (assoc-in [:floor :ids point] id)
-        (assoc-in [:floor :layout point] tile)
-        (assoc-in [:floor :where id] point))))
+        ;;(assoc-in [:floor :ids point] id)
+        (assoc-in [:layout point] tile)
+        ;;(assoc-in [:floor :where id] point)
+        )))
 
+(defn orientate-all-tiles [world]
+  (reduce orientate-tile
+          world
+          (for [x (range (:size world))
+                y (range (:size world))]
+            [x y])))
 
-(time
- (let [n 3
-       w (build-world example n)]
-   (println "---")
-   (-> (reduce put-next-tile w
-               (for [x (range n) y (range n)] [x y]))
-       :floor :ids)))
+(defn play-tile [{:keys [graph tiles plan size] :as world} point]
+  (let [spec (spec-all-around world point)
+        neighbors (get-neighbors world point)
+        [id tile] (->> neighbors
+                       (mapcat #(zipmap (repeat 8 %) (orientations (tiles %))))
+                       )
+        ]
+    [id]))
 
-#_(let [n 10
-      w (build-world input n)]
+(play-tile wx [0 0])
+(corner-tiles wx)
+
+(def wx (-> (build-world example)
+            plan-all-tiles
+            (orientate-tile [0 0])))
+
+(let [spec (spec-all-around wx [0 1])
+      id (get-in wx [:plan :grid [0 1]])
+      t (get-in wx [:tiles id])]
+  (->> (orientations t)
+       (map #(resolve-sides wx %))
+       (run! println )))
+
+(println (grid->str (get-in wx [:layout [0 0]])))
+(println "--")
+(println (grid->str (get-in wx [:tiles 1489])))
+(do (println "--")
+    (show-plan wx))
+(border-directions wx 1171 (get-in wx [:layout [0 0]]))
+(border-directions2 wx (get-in wx [:layout [0 0]]))
+(border-directions wx 1489 (flip-main-diagonal (get-in wx [:tiles 1489])))
+
+(do (println "--")
+    (println (grid->str (flip-main-diagonal (get-in wx [:tiles 1489])))))
+#_(do
   (println "--")
-  (-> (reduce put-next-tile w
-              (for [x (range n) y (range n)] [x y]))
-      :floor :ids))
-
-(def big (build-world input 10))
-
-(def b2 (reduce put-next-tile big (for [y (range 9)] [0 y])))
-
-(defn show-adj [id]
-  (println id "=>" (get-in big [:graph id])))
-
-(defn traverse [{:keys [graph]} corner depth]
-  (loop [ring [corner] depth depth seen #{}]
-    (if (zero? depth)
-      (sort ring)
-      (recur (distinct (remove seen (mapcat graph ring)))
-             (dec depth)
-             (into seen ring)))))
-
-
-(defn visit-all [{:keys [graph]} corner]
-  (loop [n 0 visited [] todo [corner] seen #{corner}]
-    (println n visited todo)
-    (if (empty? todo)
-      visited
-      (let [p (first todo)
-            c (remove seen (graph p))]
-        (recur (inc n)
-               (conj visited p)
-               (into (rest todo) c)
-               (into seen c))))))
-
-(first (corner-tiles w))
-(visit-all w 1171)
-
-(first (corner-tiles big))
-(visit-all big 1549)
+  (-> (build-world example)
+      plan-all-tiles
+      (orientate-tile [0 0])
+      (spec-all-around [0 1])
+      ;;(orientate-tile [0 1])
+      )
+  #_ (-> (build-world example)
+      plan-all-tiles
+      orientate-all-tiles))
 
 
 
-(println (sort (corner-tiles big)))
-(println (traverse (:graph big) 3539 9))
-(get-in big [:graph 3329])
+(defn uber-tile
+  ([world] (uber-tile world true))
+  ([{:keys [size floor]} cut-border?]
+   (let [pixels-per-line (* size 10)
+         pixels (for [y (range pixels-per-line)
+                      x (range pixels-per-line)
+                      :when (or (not cut-border?) (and (< 0 (rem x 10) 9)
+                                                       (< 0 (rem y 10) 9)))]
+                  (let [t [(quot x 10) (quot y 10)]
+                        s [(rem x 10) (rem y 10)]]
+                    (get-pixel (get-in floor [:layout t])
+                               s)))
+         n (if cut-border? 8 10)]
+     (mapv vec (partition (* n size) pixels)))))
 
-(set/intersection (set (corner-tiles big))
-                  (set (traverse big 1549 11)))
-
-(show-adj 1549)
-(show-adj 3779)
-
-
-(println "[0 9] candidates" (get-in b2 [:graph 3061]))
-
-(println (str "\nTile [0 8]\n"
-              (grid->str (get-in b2 [:floor :layout [0 8]]))))
-
-(defn show-floor-tile [world point]
-  (let [t (get-in world [:floor :layout point])
-        id (get-in world [:floor :ids point])
-        borders (vec (border-directions world id t))]
-    (str "\nTile " point
-         "\nId " id
-         "\nBorders " borders
-         "\n" (grid->str (get-in world [:floor :layout point])))))
-
-(def s (get-in b2 [:floor :layout [0 8]]))
-(def t (get-in b2 [:tiles 2347]))
-
-(println (show-floor-tile b2 [0 0]))
-(println (show-floor-tile b2 [0 1]))
-(println (show-floor-tile b2 [0 2]))
-(println (show-floor-tile b2 [0 3]))
-(println (show-floor-tile b2 [0 4]))
-(println (show-floor-tile b2 [0 5]))
-(println (show-floor-tile b2 [0 6]))
-(println (show-floor-tile b2 [0 7]))
-(println (show-floor-tile b2 [0 8]))
-(println (show-floor-tile b2 [0 9]))
+(defn black-pixels [g]
+  (for [x (range (count (first g)))
+        y (range (count g))
+        :when (= \# (get-in g [y x]))]
+    [x y]))
 
 
-(println (:ids (:floor b2)))
+(defn find-monsters [tile]
+  (let [nx (- (count (first tile)) (count (first monster)))
+        ny (- (count tile) (count monster))
+        tile (set (black-pixels tile))
+        monster (black-pixels monster)
+        k (count monster)]
+    (->>
+     (for [x (range nx) y (range ny)] [x y])
+     (filter (fn [v] (= k (count
+                           (set/intersection
+                            tile
+                            (set (map #(map + v %) monster)))))))
+     seq)))
 
-(spec-all-around b2 [0 9])
-(border-directions b2 2347 t)
-(get-in b2 [:graph ])
-
-(reduce * (corner-tiles (build-world example 3)))
-(reduce * (corner-tiles (build-world input 10)))
-
-;; corners: (1549 3709 2693 3539)
-(get-in b2 [:graph 1549])
-
-(println "\n")
-(println (grid->str (get-in b2 [:tiles 1297])))
-
-(defn build-graph-2 [m]
-  )
+(defn compute-roughness [sea]
+  (let [n (count (first (keep find-monsters (orientations sea))))]
+    (- (count (black-pixels sea))
+       (* n (count (black-pixels monster))))))
 
 
-(run! println (map str/join (all-sides (input 1549))))
+(reduce * (corner-tiles (build-world example)))
+(reduce * (corner-tiles (build-world input)))
 
-(println "-") (println (grid->str (input 1549)))
+(def ux (uber-tile wx))
+(compute-roughness ux)
+
+(put-all-tiles (build-world example 3))
+
+(compute-roughness ())
+
+(show-plan (reduce add-to-plan
+                   (build-world example 3)
+                   (for [x (range 3) y (range 3)] [x y])))
+
+(-> (build-world example)
+    plan-all-tiles
+    orientate-all-tiles
+    ;;orientate-all-tiles
+    ;;uber-tile
+    )
