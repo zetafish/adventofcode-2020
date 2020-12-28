@@ -85,7 +85,6 @@
       (print (format "%6s" (get plan [x y]))))
     (println)))
 
-
 (defn side [direction grid]
   (seq (case direction
          :north (first grid)
@@ -205,7 +204,6 @@
         y (range (count g))
         :when (= \# (get-in g [y x]))]
     [x y]))
-
 
 (defn find-monsters [tile]
   (let [nx (- (count (first tile)) (count (first monster)))
