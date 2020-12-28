@@ -79,48 +79,11 @@
                   (comp flip-horizontal-axis flip-main-diagonal)
                   (comp flip-horizontal-axis flip-other-diagonal)])))
 
-(defn get-neighbors [{:keys [size plan]} point]
-  (keep (fn [d]
-          (let [p (map + d point)]
-            (when (every? #(<= 0 % (dec size)) p)
-              (get-in plan [:grid p]))))
-        [[0 -1] [0 1] [1 0][-1 0]]))
-
-;;(get-neighbors wx [0 0])
-
-(defn match-neightbors [world ])
-
-(defn plan-tile [{:keys [graph tiles plan size] :as world} point]
-  (let [neighbors (keep (fn [d]
-                      (let [p (map + d point)]
-                        (if (every? #(<= 0 % (dec size)) p)
-                          (get-in plan [:grid p])
-                          :border)))
-                    [[0 -1] [0 1] [1 0][-1 0]])
-        match-neighbors? (fn [id]
-                           (let [sides (->>
-                                        (concat (graph id) (repeat 4 :border))
-                                        (take 4)
-                                        (filter (set neighbors)))]
-                             (= (frequencies neighbors)
-                                (frequencies sides))))
-        candidates (->> (keys tiles)
-                        (filter match-neighbors?)
-                        (remove (set (:used plan))))
-        id (first candidates)]
-    (-> world
-        (assoc-in [:plan :grid point] id)
-        (update-in [:plan :used] conj id))))
-
 (defn show-plan [{:keys [plan size]}]
   (doseq [y (range size)]
     (doseq [x (range size)]
-      (print (format "%6s" (get-in plan [:grid [x y]]))))
+      (print (format "%6s" (get plan [x y]))))
     (println)))
-
-(defn plan-all-tiles [{:keys [size] :as world}]
-  (reduce plan-tile world
-          (for [x (range size) y (range size)] [x y])))
 
 
 (defn side [direction grid]
@@ -192,78 +155,40 @@
 (defn orientate-to-spec [world spec id]
   (let [tiles (filter #(satisfies-spec? world spec %)
                       (orientations (get-in world [:tiles id])))]
-    (println "found" (count tiles) "orientations for" id)
     (first tiles)))
 
-(defn orientate-tile [world point]
-  (println "orientate" point)
-  (let [spec (spec-all-around world point)
-        id (get-in world [:plan :grid point])
-        tile (orientate-to-spec world spec id)]
-    (-> world
-        ;;(assoc-in [:floor :ids point] id)
-        (assoc-in [:layout point] tile)
-        ;;(assoc-in [:floor :where id] point)
-        )))
+(defn neighbor-connected-tiles
+  "Determine the tile ids at `point` based on what the neightbors have
+  to say about it."
+  [{:keys [plan graph]} point]
+  (->> [[0 1] [1 0] [0 -1] [-1 0]]
+       (map #(map + point %))
+       (keep plan)
+       (map (comp set graph))
+       (apply set/intersection)))
 
-(defn orientate-all-tiles [world]
-  (reduce orientate-tile
-          world
+(defn play-tile [{:keys [graph tiles plan size] :as world} point]
+  (let [spec (spec-all-around world point)
+        candidates (if (= point [0 0])
+                     (take 1 (corner-tiles world))
+                     (neighbor-connected-tiles world point))
+        [id tile] (->> candidates
+                       (map #(vector % (orientate-to-spec world spec %)))
+                       (filter second)
+                       first)]
+    (-> world
+        (assoc-in [:plan point] id)
+        (assoc-in [:layout point] tile))))
+
+(defn play-all-tiles [world]
+  (reduce play-tile world
           (for [x (range (:size world))
                 y (range (:size world))]
             [x y])))
 
-(defn play-tile [{:keys [graph tiles plan size] :as world} point]
-  (let [spec (spec-all-around world point)
-        neighbors (get-neighbors world point)
-        [id tile] (->> neighbors
-                       (mapcat #(zipmap (repeat 8 %) (orientations (tiles %))))
-                       )
-        ]
-    [id]))
-
-(play-tile wx [0 0])
-(corner-tiles wx)
-
-(def wx (-> (build-world example)
-            plan-all-tiles
-            (orientate-tile [0 0])))
-
-(let [spec (spec-all-around wx [0 1])
-      id (get-in wx [:plan :grid [0 1]])
-      t (get-in wx [:tiles id])]
-  (->> (orientations t)
-       (map #(resolve-sides wx %))
-       (run! println )))
-
-(println (grid->str (get-in wx [:layout [0 0]])))
-(println "--")
-(println (grid->str (get-in wx [:tiles 1489])))
-(do (println "--")
-    (show-plan wx))
-(border-directions wx 1171 (get-in wx [:layout [0 0]]))
-(border-directions2 wx (get-in wx [:layout [0 0]]))
-(border-directions wx 1489 (flip-main-diagonal (get-in wx [:tiles 1489])))
-
-(do (println "--")
-    (println (grid->str (flip-main-diagonal (get-in wx [:tiles 1489])))))
-#_(do
-  (println "--")
-  (-> (build-world example)
-      plan-all-tiles
-      (orientate-tile [0 0])
-      (spec-all-around [0 1])
-      ;;(orientate-tile [0 1])
-      )
-  #_ (-> (build-world example)
-      plan-all-tiles
-      orientate-all-tiles))
-
-
-
-(defn uber-tile
+(defn make-sea
   ([world] (uber-tile world true))
-  ([{:keys [size floor]} cut-border?]
+  ([{:keys [size layout]} cut-border?]
    (let [pixels-per-line (* size 10)
          pixels (for [y (range pixels-per-line)
                       x (range pixels-per-line)
@@ -271,8 +196,7 @@
                                                        (< 0 (rem y 10) 9)))]
                   (let [t [(quot x 10) (quot y 10)]
                         s [(rem x 10) (rem y 10)]]
-                    (get-pixel (get-in floor [:layout t])
-                               s)))
+                    (get-pixel (get layout t) s)))
          n (if cut-border? 8 10)]
      (mapv vec (partition (* n size) pixels)))))
 
@@ -302,24 +226,10 @@
     (- (count (black-pixels sea))
        (* n (count (black-pixels monster))))))
 
-
+;; part 1
 (reduce * (corner-tiles (build-world example)))
 (reduce * (corner-tiles (build-world input)))
 
-(def ux (uber-tile wx))
-(compute-roughness ux)
-
-(put-all-tiles (build-world example 3))
-
-(compute-roughness ())
-
-(show-plan (reduce add-to-plan
-                   (build-world example 3)
-                   (for [x (range 3) y (range 3)] [x y])))
-
-(-> (build-world example)
-    plan-all-tiles
-    orientate-all-tiles
-    ;;orientate-all-tiles
-    ;;uber-tile
-    )
+;; part 2
+(-> example build-world play-all-tiles make-sea compute-roughness)
+(-> input build-world play-all-tiles make-sea compute-roughness)
